@@ -14,12 +14,40 @@
         "data": {
           "username": "[%key:common::config_flow::data::username%]",
           "password": "[%key:common::config_flow::data::password%]",
-          "totp_secret": "TOTP secret"
+          "totp_secret": "TOTP secret",
+          "jwt_token": "JWT Token",
+          "customer_urn": "Customer URN",
+          "sa_uuid": "Service Agreement UUID",
+          "sp_uuid": "Service Point UUID",
+          "register_id": "Register ID"
         },
         "data_description": {
           "username": "The username for your utility account",
           "password": "The password for your utility account",
-          "totp_secret": "This is not a 6-digit code. It is a string of around 16 characters containing the shared secret that enables your authenticator app to generate the correct time-based code at the appropriate time. See the documentation."
+          "totp_secret": "This is not a 6-digit code. It is a string of around 16 characters containing the shared secret that enables your authenticator app to generate the correct time-based code at the appropriate time. See the documentation.",
+          "jwt_token": "JWT token for GraphQL API access (National Grid MA only)",
+          "customer_urn": "Customer URN for GraphQL API (National Grid MA only)",
+          "sa_uuid": "Service Agreement UUID for GraphQL API (National Grid MA only)",
+          "sp_uuid": "Service Point UUID for GraphQL API (National Grid MA only)",
+          "register_id": "Register ID for GraphQL API (National Grid MA only)"
+        }
+      },
+      "realtime_config": {
+        "title": "Real-time data configuration",
+        "description": "Configure real-time data access for National Grid MA. All fields are required to enable real-time 15-minute interval data.",
+        "data": {
+          "jwt_token": "JWT Token",
+          "customer_urn": "Customer URN",
+          "sa_uuid": "Service Agreement UUID",
+          "sp_uuid": "Service Point UUID",
+          "register_id": "Register ID"
+        },
+        "data_description": {
+          "jwt_token": "JWT token for GraphQL API access",
+          "customer_urn": "Customer URN for GraphQL API",
+          "sa_uuid": "Service Agreement UUID for GraphQL API",
+          "sp_uuid": "Service Point UUID for GraphQL API",
+          "register_id": "Register ID for GraphQL API"
         }
       },
       "mfa_options": {
@@ -59,7 +87,8 @@
     "error": {
       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-      "invalid_mfa_code": "The security code is incorrect. Please try again."
+      "invalid_mfa_code": "The security code is incorrect. Please try again.",
+      "incomplete_realtime_config": "All real-time configuration fields are required if any are provided."
     },
     "abort": {
       "already_configured": "[%key:common::config_flow::abort::already_configured_service%]",
@@ -132,6 +161,9 @@
       },
       "gas_end_date": {
         "name": "Current bill gas end date"
+      },
+      "realtime_usage": {
+        "name": "Real-time usage"
       }
     }
   }

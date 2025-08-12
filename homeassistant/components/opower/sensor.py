@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
-from opower import Forecast, MeterType, UnitOfMeasure
+from opower import Forecast, MeterType, UnitOfMeasure, UsageRead
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -32,6 +32,13 @@ class OpowerEntityDescription(SensorEntityDescription):
     """Class describing Opower sensors entities."""
 
     value_fn: Callable[[Forecast], str | float | date]
+
+
+@dataclass(frozen=True, kw_only=True)
+class OpowerRealtimeEntityDescription(SensorEntityDescription):
+    """Class describing Opower real-time sensors entities."""
+
+    value_fn: Callable[[list[UsageRead]], str | float | None]
 
 
 # suggested_display_precision=0 for all sensors since
@@ -183,6 +190,20 @@ GAS_SENSORS: tuple[OpowerEntityDescription, ...] = (
     ),
 )
 
+REALTIME_SENSORS: tuple[OpowerRealtimeEntityDescription, ...] = (
+    OpowerRealtimeEntityDescription(
+        key="realtime_usage",
+        translation_key="realtime_usage",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=3,
+        value_fn=lambda usage_reads: (
+            usage_reads[-1].consumption if usage_reads else None
+        ),
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -192,8 +213,11 @@ async def async_setup_entry(
     """Set up the Opower sensor."""
 
     coordinator = entry.runtime_data
-    entities: list[OpowerSensor] = []
-    forecasts = coordinator.data.values()
+    entities: list[OpowerSensor | OpowerRealtimeSensor] = []
+    
+    # Add forecast sensors (existing functionality)
+    forecasts_data = coordinator.data.get("forecasts", {})
+    forecasts = forecasts_data.values()
     for forecast in forecasts:
         device_id = f"{coordinator.api.utility.subdomain()}_{forecast.account.utility_account_id}"
         device = DeviceInfo(
@@ -224,6 +248,29 @@ async def async_setup_entry(
             )
             for sensor in sensors
         )
+    
+    # Add real-time sensors if available
+    realtime_data = coordinator.data.get("realtime", {})
+    if realtime_data and coordinator.has_realtime_config:
+        for account_id, usage_reads in realtime_data.items():
+            device_id = f"{coordinator.api.utility.subdomain()}_{account_id}_realtime"
+            device = DeviceInfo(
+                identifiers={(DOMAIN, device_id)},
+                name=f"Real-time Electric Usage {account_id}",
+                manufacturer="Opower",
+                model=f"{coordinator.api.utility.name()} Real-time",
+                entry_type=DeviceEntryType.SERVICE,
+            )
+            entities.extend(
+                OpowerRealtimeSensor(
+                    coordinator,
+                    sensor,
+                    account_id,
+                    device,
+                    device_id,
+                )
+                for sensor in REALTIME_SENSORS
+            )
 
     async_add_entities(entities)
 
@@ -252,6 +299,37 @@ class OpowerSensor(CoordinatorEntity[OpowerCoordinator], SensorEntity):
     @property
     def native_value(self) -> StateType | date:
         """Return the state."""
-        return self.entity_description.value_fn(
-            self.coordinator.data[self.utility_account_id]
-        )
+        forecasts_data = self.coordinator.data.get("forecasts", {})
+        forecast = forecasts_data.get(self.utility_account_id)
+        if forecast:
+            return self.entity_description.value_fn(forecast)
+        return None
+
+
+class OpowerRealtimeSensor(CoordinatorEntity[OpowerCoordinator], SensorEntity):
+    """Representation of an Opower real-time sensor."""
+
+    _attr_has_entity_name = True
+    entity_description: OpowerRealtimeEntityDescription
+
+    def __init__(
+        self,
+        coordinator: OpowerCoordinator,
+        description: OpowerRealtimeEntityDescription,
+        account_id: str,
+        device: DeviceInfo,
+        device_id: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{device_id}_{description.key}"
+        self._attr_device_info = device
+        self.account_id = account_id
+
+    @property
+    def native_value(self) -> StateType:
+        """Return the state."""
+        realtime_data = self.coordinator.data.get("realtime", {})
+        usage_reads = realtime_data.get(self.account_id, [])
+        return self.entity_description.value_fn(usage_reads)
