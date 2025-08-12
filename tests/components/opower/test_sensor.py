@@ -70,3 +70,62 @@ async def test_sensors(
     assert state
     assert state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) == "USD"
     assert state.state == "15.0"
+
+
+async def test_realtime_sensors(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry_ng_ma: MockConfigEntry,
+    mock_opower_api_ng_ma: AsyncMock,
+) -> None:
+    """Test the creation and values of Opower real-time sensors for National Grid MA."""
+    await hass.config_entries.async_setup(mock_config_entry_ng_ma.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+
+    # Check that forecast sensors are still created
+    entry = entity_registry.async_get(
+        "sensor.elec_account_ng_ma_111111_current_bill_electric_usage_to_date"
+    )
+    assert entry
+    assert entry.unique_id == "ngma_ng-ma-111111_elec_usage_to_date"
+
+    # Check real-time sensors
+    entry = entity_registry.async_get(
+        "sensor.real_time_electric_usage_test_sa_uuid_real_time_usage"
+    )
+    assert entry
+    assert entry.unique_id == "ngma_test-sa-uuid_realtime_realtime_usage"
+    state = hass.states.get(
+        "sensor.real_time_electric_usage_test_sa_uuid_real_time_usage"
+    )
+    assert state
+    assert state.attributes.get(ATTR_UNIT_OF_MEASUREMENT) == UnitOfEnergy.KILO_WATT_HOUR
+    # Should be the last reading value (2.1 kWh)
+    assert state.state == "2.1"
+
+
+async def test_sensors_without_realtime_config(
+    recorder_mock: Recorder,
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_opower_api: AsyncMock,
+) -> None:
+    """Test that regular sensors work without real-time configuration."""
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_registry = er.async_get(hass)
+
+    # Check that no real-time sensors are created
+    entries = [entry for entry in entity_registry.entities.values()
+              if "realtime" in entry.unique_id]
+    assert len(entries) == 0
+
+    # Check that regular sensors still work
+    entry = entity_registry.async_get(
+        "sensor.elec_account_111111_current_bill_electric_usage_to_date"
+    )
+    assert entry
+    assert entry.unique_id == "pge_111111_elec_usage_to_date"

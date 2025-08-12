@@ -675,3 +675,122 @@ async def test_reauth_with_mfa_challenge(
     }
     assert len(mock_unload_entry.mock_calls) == 1
     assert len(mock_setup_entry.mock_calls) == 1
+
+
+async def test_form_national_grid_ma_realtime(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_setup_entry: AsyncMock
+) -> None:
+    """Test National Grid MA config flow with real-time data configuration."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+    # Select National Grid MA utility
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"utility": "National Grid (MA)"}
+    )
+    assert result2["type"] is FlowResultType.FORM
+    assert result2["step_id"] == "credentials"
+
+    # Verify GraphQL fields are present in schema
+    schema = result2["data_schema"]
+    schema_keys = {field.schema for field in schema.schema}
+    assert any("jwt_token" in str(key) for key in schema_keys)
+    assert any("customer_urn" in str(key) for key in schema_keys)
+
+    with patch(
+        "homeassistant.components.opower.config_flow._validate_login"
+    ) as mock_login:
+        result3 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "jwt_token": "test-jwt-token",
+                "customer_urn": "test-customer-urn",
+                "sa_uuid": "test-sa-uuid",
+                "sp_uuid": "test-sp-uuid",
+                "register_id": "test-register-id",
+            },
+        )
+        mock_login.assert_awaited_once()
+
+    # Should proceed to real-time config step
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["step_id"] == "realtime_config"
+
+    # Complete real-time configuration
+    result4 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "jwt_token": "test-jwt-token",
+            "customer_urn": "test-customer-urn",
+            "sa_uuid": "test-sa-uuid",
+            "sp_uuid": "test-sp-uuid",
+            "register_id": "test-register-id",
+        },
+    )
+
+    assert result4["type"] is FlowResultType.CREATE_ENTRY
+    assert result4["title"] == "National Grid (MA) (test-username)"
+    assert result4["data"] == {
+        "utility": "National Grid (MA)",
+        "username": "test-username",
+        "password": "test-password",
+        "jwt_token": "test-jwt-token",
+        "customer_urn": "test-customer-urn",
+        "sa_uuid": "test-sa-uuid",
+        "sp_uuid": "test-sp-uuid",
+        "register_id": "test-register-id",
+    }
+
+    await hass.async_block_till_done()
+    assert len(mock_setup_entry.mock_calls) == 1
+
+
+async def test_form_national_grid_ma_incomplete_realtime_config(
+    recorder_mock: Recorder, hass: HomeAssistant, mock_setup_entry: AsyncMock
+) -> None:
+    """Test National Grid MA config flow with incomplete real-time configuration."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Select National Grid MA utility
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"utility": "National Grid (MA)"}
+    )
+
+    with patch(
+        "homeassistant.components.opower.config_flow._validate_login"
+    ) as mock_login:
+        result3 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "jwt_token": "test-jwt-token",
+                # Missing other required fields
+            },
+        )
+        mock_login.assert_awaited_once()
+
+    # Should proceed to real-time config step
+    assert result3["type"] is FlowResultType.FORM
+    assert result3["step_id"] == "realtime_config"
+
+    # Submit incomplete real-time configuration
+    result4 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "jwt_token": "test-jwt-token",
+            "customer_urn": "test-customer-urn",
+            # Missing sa_uuid, sp_uuid, register_id
+        },
+    )
+
+    assert result4["type"] is FlowResultType.FORM
+    assert result4["step_id"] == "realtime_config"
+    assert result4["errors"] == {"base": "incomplete_realtime_config"}

@@ -24,7 +24,17 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.typing import VolDictType
 
-from .const import CONF_LOGIN_DATA, CONF_TOTP_SECRET, CONF_UTILITY, DOMAIN
+from .const import (
+    CONF_CUSTOMER_URN,
+    CONF_JWT_TOKEN,
+    CONF_LOGIN_DATA,
+    CONF_REGISTER_ID,
+    CONF_SA_UUID,
+    CONF_SP_UUID,
+    CONF_TOTP_SECRET,
+    CONF_UTILITY,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,6 +110,22 @@ class OpowerConfigFlow(ConfigFlow, domain=DOMAIN):
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             else:
+                # Check if this is National Grid MA and if real-time data parameters
+                # are provided
+                if (
+                    self._data[CONF_UTILITY] == "National Grid (MA)"
+                    and any(
+                        self._data.get(key)
+                        for key in [
+                            CONF_JWT_TOKEN,
+                            CONF_CUSTOMER_URN,
+                            CONF_SA_UUID,
+                            CONF_SP_UUID,
+                            CONF_REGISTER_ID,
+                        ]
+                    )
+                ):
+                    return await self.async_step_realtime_config()
                 return self._async_create_opower_entry(self._data)
 
         schema_dict: VolDictType = {
@@ -108,6 +134,16 @@ class OpowerConfigFlow(ConfigFlow, domain=DOMAIN):
         }
         if utility.accepts_totp_secret():
             schema_dict[vol.Optional(CONF_TOTP_SECRET)] = str
+
+        # Add GraphQL real-time data options for National Grid MA
+        if self._data[CONF_UTILITY] == "National Grid (MA)":
+            schema_dict.update({
+                vol.Optional(CONF_JWT_TOKEN): str,
+                vol.Optional(CONF_CUSTOMER_URN): str,
+                vol.Optional(CONF_SA_UUID): str,
+                vol.Optional(CONF_SP_UUID): str,
+                vol.Optional(CONF_REGISTER_ID): str,
+            })
 
         return self.async_show_form(
             step_id="credentials",
@@ -171,6 +207,46 @@ class OpowerConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="mfa_code",
             data_schema=self.add_suggested_values_to_schema(
                 vol.Schema({vol.Required(CONF_MFA_CODE): str}), user_input
+            ),
+            errors=errors,
+        )
+
+    async def async_step_realtime_config(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle real-time data configuration for National Grid MA."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            self._data.update(user_input)
+
+            # Validate that all required fields are provided if any are provided
+            realtime_fields = [
+                CONF_JWT_TOKEN,
+                CONF_CUSTOMER_URN,
+                CONF_SA_UUID,
+                CONF_SP_UUID,
+                CONF_REGISTER_ID,
+            ]
+            provided_fields = [key for key in realtime_fields if self._data.get(key)]
+
+            if provided_fields and len(provided_fields) != len(realtime_fields):
+                errors["base"] = "incomplete_realtime_config"
+            else:
+                return self._async_create_opower_entry(self._data)
+
+        schema_dict: VolDictType = {
+            vol.Optional(CONF_JWT_TOKEN): str,
+            vol.Optional(CONF_CUSTOMER_URN): str,
+            vol.Optional(CONF_SA_UUID): str,
+            vol.Optional(CONF_SP_UUID): str,
+            vol.Optional(CONF_REGISTER_ID): str,
+        }
+
+        return self.async_show_form(
+            step_id="realtime_config",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(schema_dict), self._data
             ),
             errors=errors,
         )
