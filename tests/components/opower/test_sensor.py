@@ -90,7 +90,7 @@ async def test_realtime_sensors(
     )
     assert entry
     assert entry.unique_id == "ngma_ng-ma-111111_elec_usage_to_date"
-    
+
     # Check real-time sensors
     entry = entity_registry.async_get(
         "sensor.real_time_electric_usage_test_sa_uuid_real_time_usage"
@@ -119,10 +119,10 @@ async def test_sensors_without_realtime_config(
     entity_registry = er.async_get(hass)
 
     # Check that no real-time sensors are created
-    entries = [entry for entry in entity_registry.entities.values() 
+    entries = [entry for entry in entity_registry.entities.values()
               if "realtime" in entry.unique_id]
     assert len(entries) == 0
-    
+
     # Check that regular sensors still work
     entry = entity_registry.async_get(
         "sensor.elec_account_111111_current_bill_electric_usage_to_date"

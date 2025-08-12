@@ -1,12 +1,12 @@
 """Fixtures for the Opower integration tests."""
 
 from collections.abc import Generator
-from datetime import date, datetime, timezone
+from datetime import date
 from unittest.mock import AsyncMock, Mock, patch
 
-from opower import Account, Forecast, MeterType, ReadResolution, UnitOfMeasure, UsageRead
-from opower.utilities.pge import PGE
+from opower import Account, Forecast, MeterType, ReadResolution, UnitOfMeasure
 from opower.utilities.nationalgridma import NationalGridMA
+from opower.utilities.pge import PGE
 import pytest
 
 from homeassistant.components.opower.const import (
@@ -174,11 +174,11 @@ def mock_opower_api_ng_ma() -> Generator[AsyncMock]:
             ),
         ]
         api.async_get_cost_reads.return_value = []
-        
+
         # Mock the session for GraphQL requests
         mock_session = AsyncMock()
         api._session = mock_session
-        
+
         # Mock GraphQL response
         mock_response = AsyncMock()
         mock_response.json.return_value = {
@@ -195,19 +195,36 @@ def mock_opower_api_ng_ma() -> Generator[AsyncMock]:
                                                     "intervalReads": [
                                                         {
                                                             "unit": "KWH",
-                                                            "registerId": "test-register-id",
+                                                            "registerId": (
+                                                                "test-register-id"
+                                                            ),
                                                             "reads": [
                                                                 {
-                                                                    "timeInterval": "2023-01-15T12:00:00Z/2023-01-15T12:15:00Z",
-                                                                    "measuredAmount": {"value": 1.5}
+                                                                    "timeInterval": (
+                                                                        "2023-01-15T12:00:00Z/"
+                                                                        "2023-01-15T12:15:00Z"
+                                                                    ),
+                                                                    "measuredAmount": {
+                                                                        "value": 1.5
+                                                                    }
                                                                 },
                                                                 {
-                                                                    "timeInterval": "2023-01-15T12:15:00Z/2023-01-15T12:30:00Z",
-                                                                    "measuredAmount": {"value": 1.8}
+                                                                    "timeInterval": (
+                                                                        "2023-01-15T12:15:00Z/"
+                                                                        "2023-01-15T12:30:00Z"
+                                                                    ),
+                                                                    "measuredAmount": {
+                                                                        "value": 1.8
+                                                                    }
                                                                 },
                                                                 {
-                                                                    "timeInterval": "2023-01-15T12:30:00Z/2023-01-15T12:45:00Z",
-                                                                    "measuredAmount": {"value": 2.1}
+                                                                    "timeInterval": (
+                                                                        "2023-01-15T12:30:00Z/"
+                                                                        "2023-01-15T12:45:00Z"
+                                                                    ),
+                                                                    "measuredAmount": {
+                                                                        "value": 2.1
+                                                                    }
                                                                 }
                                                             ]
                                                         }
@@ -229,5 +246,5 @@ def mock_opower_api_ng_ma() -> Generator[AsyncMock]:
         }
         mock_response.raise_for_status.return_value = None
         mock_session.post.return_value = mock_response
-        
+
         yield api

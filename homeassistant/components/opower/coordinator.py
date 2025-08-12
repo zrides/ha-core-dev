@@ -1,7 +1,6 @@
 """Coordinator to handle Opower connections."""
 
-from datetime import datetime, timedelta
-import json
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any, cast
 
@@ -34,7 +33,10 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, UnitOfEnergy, Unit
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.aiohttp_client import (
+    async_create_clientsession,
+    async_get_clientsession,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -77,11 +79,11 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 CONF_REGISTER_ID,
             ]
         )
-        
+
         update_interval = (
             timedelta(minutes=15) if has_realtime_config else timedelta(hours=12)
         )
-        
+
         super().__init__(
             hass,
             _LOGGER,
@@ -106,10 +108,11 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         def _dummy_listener() -> None:
             pass
 
-        # Force the coordinator to periodically update by registering at least one listener.
-        # Needed when the _async_update_data below returns {} for utilities that don't provide
-        # forecast, which results to no sensors added, no registered listeners, and thus
-        # _async_update_data not periodically getting called which is needed for _insert_statistics.
+        # Force the coordinator to periodically update by registering at least one
+        # listener. Needed when the _async_update_data below returns {} for utilities
+        # that don't provide forecast, which results to no sensors added, no registered
+        # listeners, and thus _async_update_data not periodically getting called which
+        # is needed for _insert_statistics.
         self.async_add_listener(_dummy_listener)
 
     async def _async_update_data(
@@ -127,9 +130,9 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except CannotConnect as err:
             _LOGGER.error("Error during login: %s", err)
             raise UpdateFailed(f"Error during login: {err}") from err
-        
+
         data: dict[str, Any] = {}
-        
+
         # Fetch forecast data (existing functionality)
         try:
             forecasts: list[Forecast] = await self.api.async_get_forecast()
@@ -140,7 +143,7 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.error("Error getting forecasts: %s", err)
             # Don't raise here, continue to get real-time data if available
             data["forecasts"] = {}
-        
+
         # Fetch real-time data if configured for National Grid MA
         if (
             self.has_realtime_config
@@ -149,10 +152,10 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 realtime_data = await self._async_get_realtime_data()
                 data["realtime"] = realtime_data
-            except Exception as err:
+            except ApiException as err:
                 _LOGGER.error("Error getting real-time data: %s", err)
                 data["realtime"] = {}
-        
+
         _LOGGER.debug("Updating sensor data with: %s", data)
         # Because Opower provides historical usage/cost with a delay of a couple of days
         # we need to insert data into statistics.
@@ -260,8 +263,8 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     },
                 )
                 if migrated:
-                    # Skip update to avoid working on old data since the migration is done
-                    # asynchronously. Update the statistics in the next refresh in 12h.
+                    # Skip update to avoid working on old data since the migration is
+                    # done asynchronously. Update the statistics in the next refresh.
                     _LOGGER.debug(
                         "Statistics migration completed. Skipping update for now"
                     )
@@ -398,7 +401,8 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             utility_account_id: The account ID (for issue_id).
             migration_map: Map from source statistic ID to target statistic ID
                            (e.g., {cost_id: compensation_id}).
-            metadata_map: Map of all statistic IDs (source and target) to their metadata.
+            metadata_map: Map of all statistic IDs (source and target) to their
+                          metadata.
 
         """
         if not migration_map:
@@ -594,21 +598,33 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_get_realtime_data(self) -> dict[str, list[UsageRead]]:
         """Get real-time usage data using GraphQL API for National Grid MA."""
-        
+
         # GraphQL endpoint and query for National Grid MA
         url = "https://ngma.opower.com/ei/edge/apis/dsm-graphql-v1/cws/graphql"
-        
+
         # Prepare headers
         headers = {
             "content-type": "application/json",
             "authorization": f"Bearer {self.config_entry.data[CONF_JWT_TOKEN]}",
-            "opower-selected-entities": f'["{self.config_entry.data[CONF_CUSTOMER_URN]}"]',
+            "opower-selected-entities": (
+                f'["{self.config_entry.data[CONF_CUSTOMER_URN]}"]'
+            ),
         }
-        
+
         # GraphQL query
         query = """
-        query WRTAMI_GetRegisterUsage($customerURN: ID, $forceLegacyData: Boolean, $registerId: ID, $timeInterval: TimeInterval, $saUuid: String, $spUuid: String) {
-          billingAccountByAuthContext(singlePremise: $customerURN, forceLegacyData: $forceLegacyData) {
+        query WRTAMI_GetRegisterUsage(
+            $customerURN: ID,
+            $forceLegacyData: Boolean,
+            $registerId: ID,
+            $timeInterval: TimeInterval,
+            $saUuid: String,
+            $spUuid: String
+        ) {
+          billingAccountByAuthContext(
+            singlePremise: $customerURN,
+            forceLegacyData: $forceLegacyData
+          ) {
             serviceAgreementsConnection(onlyActive: true, matching: $saUuid) {
               edges { node {
                 servicePointsConnection(matching: $spUuid) {
@@ -637,13 +653,12 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
           }
         }
         """
-        
+
         # Calculate time interval (last 24 hours)
-        from datetime import timezone
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         start_time = end_time - timedelta(hours=24)
         time_interval = f"{start_time.isoformat()}/{end_time.isoformat()}"
-        
+
         # GraphQL variables
         variables = {
             "registerId": self.config_entry.data[CONF_REGISTER_ID],
@@ -654,36 +669,37 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "locale": "en-US",
             "timeInterval": time_interval,
         }
-        
+
         # Prepare request payload
         payload = {
             "operationName": "WRTAMI_GetRegisterUsage",
             "variables": variables,
             "query": query,
         }
-        
-        # Make GraphQL request using the existing session
+
+        # Make GraphQL request using a new session
+        session = async_get_clientsession(self.hass)
         try:
-            response = await self.api._session.post(url, headers=headers, json=payload)
+            response = await session.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = await response.json()
         except Exception as err:
             _LOGGER.error("Error making GraphQL request: %s", err)
             raise UpdateFailed(f"Error making GraphQL request: {err}") from err
-        
+
         # Check for GraphQL errors
         if "errors" in data and data.get("errors"):
             _LOGGER.error("GraphQL errors: %s", data["errors"])
             raise UpdateFailed(f"GraphQL errors: {data['errors']}")
-        
+
         if "data" not in data or data["data"] is None:
             _LOGGER.error("No 'data' in GraphQL response")
             raise UpdateFailed("No 'data' in GraphQL response")
-        
+
         # Parse the response and convert to UsageRead objects
         usage_reads: list[UsageRead] = []
         graphql_data = data["data"]
-        
+
         try:
             billing_account = graphql_data["billingAccountByAuthContext"]
             if billing_account:
@@ -696,18 +712,18 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             for read in stream.get("reads", []):
                                 interval = read["timeInterval"]
                                 start_str, end_str = interval.split("/", 1)
-                                
+
                                 # Parse ISO timestamps
-                                start_dt = datetime.fromisoformat(
-                                    start_str.replace("Z", "+00:00")
-                                )
-                                end_dt = datetime.fromisoformat(
-                                    end_str.replace("Z", "+00:00")
-                                )
-                                
+                                start_dt = datetime.fromisoformat(start_str)
+                                end_dt = datetime.fromisoformat(end_str)
+
                                 measured_amount = read.get("measuredAmount")
-                                value = measured_amount.get("value") if measured_amount else None
-                                
+                                value = (
+                                    measured_amount.get("value")
+                                    if measured_amount
+                                    else None
+                                )
+
                                 if value is not None:
                                     usage_reads.append(
                                         UsageRead(
@@ -719,9 +735,9 @@ class OpowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (KeyError, ValueError, TypeError) as err:
             _LOGGER.error("Error parsing GraphQL response: %s", err)
             raise UpdateFailed(f"Error parsing GraphQL response: {err}") from err
-        
+
         _LOGGER.debug("Got %s real-time usage reads", len(usage_reads))
-        
+
         # Group by account (in this case, we only have one)
         account_id = self.config_entry.data[CONF_SA_UUID]
         return {account_id: usage_reads}

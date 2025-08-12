@@ -696,7 +696,7 @@ async def test_form_national_grid_ma_realtime(
 
     # Verify GraphQL fields are present in schema
     schema = result2["data_schema"]
-    schema_keys = {field.schema for field in schema.schema.keys()}
+    schema_keys = {field.schema for field in schema.schema}
     assert any("jwt_token" in str(key) for key in schema_keys)
     assert any("customer_urn" in str(key) for key in schema_keys)
 
@@ -759,7 +759,7 @@ async def test_form_national_grid_ma_incomplete_realtime_config(
     )
 
     # Select National Grid MA utility
-    result2 = await hass.config_entries.flow.async_configure(
+    await hass.config_entries.flow.async_configure(
         result["flow_id"], {"utility": "National Grid (MA)"}
     )
 

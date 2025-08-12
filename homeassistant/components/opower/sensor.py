@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 
 from opower import Forecast, MeterType, UnitOfMeasure, UsageRead
 
@@ -214,15 +214,21 @@ async def async_setup_entry(
 
     coordinator = entry.runtime_data
     entities: list[OpowerSensor | OpowerRealtimeSensor] = []
-    
+
     # Add forecast sensors (existing functionality)
     forecasts_data = coordinator.data.get("forecasts", {})
     forecasts = forecasts_data.values()
     for forecast in forecasts:
-        device_id = f"{coordinator.api.utility.subdomain()}_{forecast.account.utility_account_id}"
+        device_id = (
+            f"{coordinator.api.utility.subdomain()}_"
+            f"{forecast.account.utility_account_id}"
+        )
         device = DeviceInfo(
             identifiers={(DOMAIN, device_id)},
-            name=f"{forecast.account.meter_type.name} account {forecast.account.utility_account_id}",
+            name=(
+                f"{forecast.account.meter_type.name} account "
+                f"{forecast.account.utility_account_id}"
+            ),
             manufacturer="Opower",
             model=coordinator.api.utility.name(),
             entry_type=DeviceEntryType.SERVICE,
@@ -248,11 +254,11 @@ async def async_setup_entry(
             )
             for sensor in sensors
         )
-    
+
     # Add real-time sensors if available
     realtime_data = coordinator.data.get("realtime", {})
     if realtime_data and coordinator.has_realtime_config:
-        for account_id, usage_reads in realtime_data.items():
+        for account_id in realtime_data.keys():
             device_id = f"{coordinator.api.utility.subdomain()}_{account_id}_realtime"
             device = DeviceInfo(
                 identifiers={(DOMAIN, device_id)},

@@ -110,7 +110,8 @@ class OpowerConfigFlow(ConfigFlow, domain=DOMAIN):
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             else:
-                # Check if this is National Grid MA and if real-time data parameters are provided
+                # Check if this is National Grid MA and if real-time data parameters
+                # are provided
                 if (
                     self._data[CONF_UTILITY] == "National Grid (MA)"
                     and any(
@@ -218,7 +219,7 @@ class OpowerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._data.update(user_input)
-            
+
             # Validate that all required fields are provided if any are provided
             realtime_fields = [
                 CONF_JWT_TOKEN,
@@ -228,7 +229,7 @@ class OpowerConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_REGISTER_ID,
             ]
             provided_fields = [key for key in realtime_fields if self._data.get(key)]
-            
+
             if provided_fields and len(provided_fields) != len(realtime_fields):
                 errors["base"] = "incomplete_realtime_config"
             else:
